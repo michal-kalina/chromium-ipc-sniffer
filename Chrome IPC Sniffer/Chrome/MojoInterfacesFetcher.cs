@@ -29,7 +29,7 @@ namespace ChromeIPCSniffer
         /// </summary>
         /// <param name="force"></param>
         /// <returns>The cached interfaces chromium version</returns>
-        public static string UpdateInterfacesInfoIfNeeded(string chromeVersion, bool force = false)
+        public static string UpdateInterfacesInfoIfNeeded(IMonitor monitor, bool force = false)
         {
             if (!force)
             {
@@ -42,13 +42,13 @@ namespace ChromeIPCSniffer
                 }
             }
 
-            string commit = ChromeMonitor.GetCommitForVersion(chromeVersion);
+            string commit = monitor.GetCommitForVersion();
             Console.WriteLine("[+] Matching commit is " + commit);
 
-            List<string> mojoFilePaths = GetMojomFilesPaths(chromeVersion, commit);
-            DownloadAndAnalyzeMojomFiles(mojoFilePaths, commit, chromeVersion);
+            List<string> mojoFilePaths = GetMojomFilesPaths(monitor.ChromeVersion, commit);
+            DownloadAndAnalyzeMojomFiles(mojoFilePaths, commit, monitor.ChromeVersion);
 
-            return chromeVersion;
+            return monitor.ChromeVersion;
         }
 
         /// <summary>
@@ -67,7 +67,7 @@ namespace ChromeIPCSniffer
             //
             // Iterate over all top-level directories
             //
-            webClient.Headers.Add("User-Agent", "Chrome IPC Sniffer");
+            webClient.Headers.Add("User-Agent", "WPM Browser IPC Sniffer");
             dynamic directories = JsonConvert.DeserializeObject(webClient.DownloadString("https://api.github.com/repos/chromium/chromium/contents?ref=" + latestCommit));
             foreach (var directory in directories)
             {
@@ -82,7 +82,7 @@ namespace ChromeIPCSniffer
 
                     Console.WriteLine("[+] Downloading dir tree '{0}'", directoryName);
 
-                    webClient.Headers.Add("User-Agent", "Chrome IPC Sniffer");
+                    webClient.Headers.Add("User-Agent", "WPM Browser IPC Sniffer");
                     dynamic directoryListing = JsonConvert.DeserializeObject(webClient.DownloadString(directoryListingUrl));
                     dynamic filesList = directoryListing["tree"];
                     foreach (var file in filesList)
@@ -108,6 +108,7 @@ namespace ChromeIPCSniffer
         /// <param name="chromeVersion"></param>
         public static void DownloadAndAnalyzeMojomFiles(List<string> mojomFiles, string commit, string chromeVersion)
         {
+            var typeJurnal = new Dictionary<string, bool>();
             TextWriter textWriter = new StreamWriter(CACHE_FILENAME, false);
             JsonWriter jsonWriter = new JsonTextWriter(textWriter);
             jsonWriter.Formatting = Formatting.Indented;
@@ -139,7 +140,7 @@ namespace ChromeIPCSniffer
                     //
                     // Analyse this file
                     //
-                    AnalyzeMojomFile(jsonWriter, mojomFile, mojomFilePath, commit);
+                    AnalyzeMojomFile(ref typeJurnal, jsonWriter, mojomFile, mojomFilePath, commit);
 
                 }
                 catch (WebException webException)
@@ -178,11 +179,12 @@ namespace ChromeIPCSniffer
             textWriter.Close();
         }
 
-        public static void AnalyzeMojomFile(JsonWriter jsonWriter, string mojomFileContents, string mojomFilePath, string commit)
+        public static void AnalyzeMojomFile(ref Dictionary<string, bool> typeJurnal, JsonWriter jsonWriter, string mojomFileContents, string mojomFilePath, string commit)
         {
             RegexOptions regexOptions = RegexOptions.Compiled | RegexOptions.Multiline | RegexOptions.Singleline;
             Regex moduleRegex = new Regex(@"^module (.*?);", regexOptions);
             string moduleName = moduleRegex.Match(mojomFileContents).Groups[1].Value;
+            var cleanMojomFileContents = mojomFileContents;
 
             //
             // Extract interfaces and methods
@@ -197,6 +199,12 @@ namespace ChromeIPCSniffer
                 string interfaceDefinition = interfaceMatch.Groups[0].Value;
                 string interfaceName = interfaceMatch.Groups[1].Value;
                 int interfaceDefinitionLine = ToLineNumber(mojomFileContents, interfaceMatch.Groups[0].Index);
+
+                cleanMojomFileContents = cleanMojomFileContents.Replace(interfaceDefinition, "");
+                //
+                // Extract inner structs, enums and unions
+                //
+                ExctractTypes(ref typeJurnal, jsonWriter, regexOptions, moduleName, interfaceName, interfaceDefinition, mojomFilePath, commit);
 
                 // Iterate the methods defined in this interace
                 Regex methodsRegex = new Regex(@"^[^\/{]+?\(.*?\);", regexOptions);
@@ -241,8 +249,10 @@ namespace ChromeIPCSniffer
             }
 
             //
-            // Extract structs, enums and unions
+            // Extract outer structs, enums and unions
             //
+            ExctractTypes(ref typeJurnal, jsonWriter, regexOptions, moduleName, "", cleanMojomFileContents, mojomFilePath, commit);
+            /*
             Regex structsRegex = new Regex(@"^ *struct (\w+?) \{((?:[^{}]|(?<open>\{)|(?<-open>\}))*(?(open)(?!)))\};|^ *struct (\w+?);", regexOptions);
             Regex enumsRegex = new Regex(@"^ *enum (\w+?) \{((?:[^{}]|(?<open>\{)|(?<-open>\}))*(?(open)(?!)))\};|^ *enum (\w+?);", regexOptions);
             Regex unionsRegex = new Regex(@"^ *union (\w+?) \{((?:[^{}]|(?<open>\{)|(?<-open>\}))*(?(open)(?!)))\};|^ *union (\w+?);", regexOptions);
@@ -277,8 +287,61 @@ namespace ChromeIPCSniffer
                 jsonWriter.WritePropertyName("link");
                 jsonWriter.WriteValue(mojomFileLink);
                 jsonWriter.WriteEndObject();
-            }
+            }*/
 
+        }
+
+        public static void ExctractTypes(ref Dictionary<string, bool> typeJurnal, JsonWriter jsonWriter, RegexOptions regexOptions, string moduleName, string outerType, string mojomFileContents, string mojomFilePath, string commit)
+        {
+            Regex structsRegex = new Regex(@"^ *struct (\w+?) \{((?:[^{}]|(?<open>\{)|(?<-open>\}))*(?(open)(?!)))\};|^ *struct (\w+?);", regexOptions);
+            Regex enumsRegex = new Regex(@"^ *enum (\w+?) \{((?:[^{}]|(?<open>\{)|(?<-open>\}))*(?(open)(?!)))\};|^ *enum (\w+?);", regexOptions);
+            Regex unionsRegex = new Regex(@"^ *union (\w+?) \{((?:[^{}]|(?<open>\{)|(?<-open>\}))*(?(open)(?!)))\};|^ *union (\w+?);", regexOptions);
+
+            MatchCollection structsMatches = structsRegex.Matches(mojomFileContents);
+            MatchCollection enumsMatches = enumsRegex.Matches(mojomFileContents);
+            MatchCollection unionsMatches = unionsRegex.Matches(mojomFileContents);
+            IEnumerable<Match> combinedMatches = structsMatches.OfType<Match>().Concat(enumsMatches.OfType<Match>()).Concat(unionsMatches.OfType<Match>()).Where(m => m.Success);
+
+            foreach (Match match in combinedMatches)
+            {
+                var structDefinition = match.Groups[0].Value.Trim();
+                var stuctName = match.Groups[1].Value != "" ? match.Groups[1].Value : structDefinition.Split(' ')[1].Replace(";", "");
+                var fullStructName = moduleName;
+                if (!string.IsNullOrEmpty(outerType)) fullStructName = fullStructName + "." + outerType;
+                fullStructName = fullStructName + "." + stuctName;
+
+                var structContents = match.Groups[2].Value;
+                var structDefinitionLine = ToLineNumber(mojomFileContents, match.Groups[0].Index);
+
+
+                var mojomFileLink = @"https://source.chromium.org/chromium/chromium/src/+/" + commit + ":" + mojomFilePath + ";l=" + structDefinitionLine;
+
+                if (typeJurnal.ContainsKey(fullStructName))
+                {
+                    Console.WriteLine($"The type {fullStructName} already exists in json structure. {mojomFileLink}");
+                    return;
+                }
+                typeJurnal[fullStructName] = true;
+
+                if (structContents != "")
+                {
+                    // TODO: inner structs/enums should be extracted instead of cleaned
+                    ExctractTypes(ref typeJurnal, jsonWriter, regexOptions, moduleName, fullStructName, structContents,
+                        mojomFilePath, commit);
+                    string structContentsCleaned = CleanUpInnerStructs(structContents, structsRegex, enumsRegex, unionsRegex);
+                    structDefinition = structDefinition.Replace(structContents, structContentsCleaned);
+                }
+
+                structDefinition = CleanUpDefinition(structDefinition);
+
+                jsonWriter.WritePropertyName(fullStructName); 
+                jsonWriter.WriteStartObject();
+                jsonWriter.WritePropertyName("definition");
+                jsonWriter.WriteValue(structDefinition.Trim());
+                jsonWriter.WritePropertyName("link");
+                jsonWriter.WriteValue(mojomFileLink);
+                jsonWriter.WriteEndObject();
+            }
         }
 
         public static int ToLineNumber(string input, int indexPosition)

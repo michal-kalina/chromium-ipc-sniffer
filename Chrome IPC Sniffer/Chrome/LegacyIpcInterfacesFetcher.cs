@@ -52,7 +52,7 @@ namespace ChromeIPCSniffer
         /// </summary>
         /// <param name="force"></param>
         /// <returns>The cached interfaces chromium verison</returns>
-        public static string UpdateInterfacesInfoIfNeeded(string chromeVersion, bool force = false)
+        public static string UpdateInterfacesInfoIfNeeded(IMonitor monitor, bool force = false)
         {
             if (!force)
             {
@@ -65,12 +65,12 @@ namespace ChromeIPCSniffer
                 }
             }
 
-            string commit = ChromeMonitor.GetCommitForVersion(chromeVersion);
+            string commit = monitor.GetCommitForVersion();
             Console.WriteLine("[+] Matching commit is " + commit);
 
-            DownloadAndAnalyzeLegacyIpcFiles(messageFiles, commit, chromeVersion);
+            DownloadAndAnalyzeLegacyIpcFiles(messageFiles, commit, monitor.ChromeVersion);
 
-            return chromeVersion;
+            return monitor.ChromeVersion;
         }
 
         /// <summary>

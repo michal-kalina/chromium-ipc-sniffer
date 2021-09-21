@@ -18,7 +18,7 @@ namespace ChromeIPCSniffer
     class NamedPipeSniffer
     {
         private WiresharkSender wiresharkSender;
-        private ChromeMonitor chromeMonitor;
+        private IMonitor monitor;
 
         string pipeNameFilter = "";
         private bool recordingOnlyNewMojoPipes;
@@ -43,12 +43,12 @@ namespace ChromeIPCSniffer
         Dictionary<string, NamedPipeInfo> namedPipeFiles;
         List<string> destoryedNamedPipes;
 
-        public NamedPipeSniffer(ChromeMonitor chromeMonitor, string wiresharkPipeName, string nameFilter = "", bool recordOnlyNewMojoPipes = false)
+        public NamedPipeSniffer(IMonitor monitor, string wiresharkPipeName, string nameFilter = "", bool recordOnlyNewMojoPipes = false)
         {
             this.wiresharkSender = new WiresharkSender(wiresharkPipeName, 1);
             this.namedPipeFiles = new Dictionary<string, NamedPipeInfo>();
             this.destoryedNamedPipes = new List<string>();
-            this.chromeMonitor = chromeMonitor;
+            this.monitor = monitor;
             this.recordingOnlyNewMojoPipes = recordOnlyNewMojoPipes;
             this.pipeNameFilter = nameFilter;
             this.lastDropTime = DateTime.Now;
@@ -285,7 +285,7 @@ namespace ChromeIPCSniffer
                 // Create a new pipe
                 namedPipeFiles[pipeName] = new NamedPipeInfo(pipeFileIdentifier, pipeName, notificationHeader.processId);
 
-                chromeMonitor.UpdateRunningProcessesCache();
+                monitor.UpdateRunningProcessesCache();
             }
             else
             {
@@ -313,7 +313,7 @@ namespace ChromeIPCSniffer
             UInt64 fileObject = writeParams.fileIdentifier;
             UInt32 processId = notificationHeader.processId;
 
-            if (!chromeMonitor.IsChromeProcess(processId)) return;
+            if (!monitor.IsProcess(processId)) return;
 
             // Find out on which pipe this packet was sent
             NamedPipeInfo pipe = DeterminePipeFromPacket(notificationHeader, writeParams);
@@ -340,7 +340,7 @@ namespace ChromeIPCSniffer
                     // try to find the destination process using Windows handle query
                     //
 
-                    List<int> legalPIDs = ChromeMonitor.GetRunningChromeProcesses().Select(process => process.Id).ToList();
+                    List<int> legalPIDs = monitor.GetRunningProcesses().Select(process => process.Id).ToList();
                     string fullPipePath = @"\Device\NamedPipe" + pipe.PipeFileName;
                     namedPipeFiles[pipeName].InvolvedProcesses = HandlesUtility.GetProcessesUsingFile(fullPipePath, legalPIDs);
                     if (namedPipeFiles[pipeName].InvolvedProcesses.Count < 2)
@@ -439,8 +439,8 @@ namespace ChromeIPCSniffer
             writer.Write(header.code);
             writer.Write(sourcePID);
             writer.Write(destPID);
-            writer.Write((UInt32)chromeMonitor.GetChromeProcessType(sourcePID));
-            writer.Write((UInt32)chromeMonitor.GetChromeProcessType(destPID));
+            writer.Write((UInt32)monitor.GetProcessType(sourcePID));
+            writer.Write((UInt32)monitor.GetProcessType(destPID));
             writer.Write(header.threadId);
             writer.Write(pipeName);
             writer.Write(header.timestamp);

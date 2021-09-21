@@ -37,8 +37,9 @@
     <Prefer32Bit>false</Prefer32Bit>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
-      <HintPath>..\packages\Newtonsoft.Json.12.0.3\lib\net45\Newtonsoft.Json.dll</HintPath>
+    <Reference Include="Newtonsoft.Json, Version=6.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\WPM\packages\Newtonsoft.Json\lib\net45\Newtonsoft.Json.dll</HintPath>
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
@@ -52,7 +53,11 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Chrome\ChromeProcessType.cs" />
+    <Compile Include="Chrome\CustomMonitor.cs" />
+    <Compile Include="Chrome\IMonitor.cs" />
     <Compile Include="Chrome\LegacyIpcInterfacesFetcher.cs" />
+    <Compile Include="Chrome\ProcessInfo.cs" />
     <Compile Include="Utilities\Extensions\ByteArrayExtensions.cs" />
     <Compile Include="Chrome\ChromeMonitor.cs" />
     <Compile Include="Utilities\Extensions\DirectoryExtensions.cs" />

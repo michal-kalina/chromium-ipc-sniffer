@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Globalization;
 using System.Reflection;
+using System.Text.RegularExpressions;
 
 namespace ChromeIPCSniffer
 {
@@ -29,6 +30,9 @@ namespace ChromeIPCSniffer
             bool forceFetchInterfacesInfo = false;
             bool forceExtractMethodNames = false;
             bool onlyMojo = false;
+            var customProcessName = string.Empty;
+            var customIpcName = string.Empty;
+            var customChromiumVersion = string.Empty;
             foreach (string argument in args)
             {
                 if (argument.Contains("--update-interfaces-info")) { forceFetchInterfacesInfo = true; forceExtractMethodNames = true; }
@@ -36,6 +40,42 @@ namespace ChromeIPCSniffer
                 else if (argument.Contains("--extract-method-names")) forceExtractMethodNames = true;
                 else if (argument.Contains("--only-mojo")) onlyMojo = true;
                 else if (argument.Contains("-h") || argument.Contains("--help") || argument.Contains("/?")) { ShowUsage(); return; }
+                else if (argument.Contains("--custom-process-name"))
+                {
+                    var r1 = new Regex(@"--custom-process-name\=(?<customProcessName>.*)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+                    var m1 = r1.Match(argument);
+                    if (!m1.Success)
+                    {
+                        Console.WriteLine("[!] Unrecognized argument value '{0}'", argument);
+                        return;
+                    }
+                    customProcessName = m1.Groups["customProcessName"].Value;
+                    Console.WriteLine($"[+] Using custom process name '{customProcessName}'");
+                }
+                else if (argument.Contains("--custom-ipc-name"))
+                {
+                    var r2 = new Regex(@"--custom-ipc-name\=(?<customIpcName>.*)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+                    var m2 = r2.Match(argument);
+                    if (!m2.Success)
+                    {
+                        Console.WriteLine("[!] Unrecognized argument value '{0}'", argument);
+                        return;
+                    }
+                    customIpcName = m2.Groups["customIpcName"].Value;
+                    Console.WriteLine($"[+] Using custom ipc '{customIpcName}'");
+                }
+                else if (argument.Contains("--custom-chromium-version"))
+                {
+                    var r2 = new Regex(@"--custom-chromium-version\=(?<customChromiumVersion>.*)", RegexOptions.CultureInvariant | RegexOptions.IgnoreCase);
+                    var m2 = r2.Match(argument);
+                    if (!m2.Success)
+                    {
+                        Console.WriteLine("[!] Unrecognized argument value '{0}'", argument);
+                        return;
+                    }
+                    customChromiumVersion = m2.Groups["customChromiumVersion"].Value;
+                    Console.WriteLine($"[+] Using chromium version '{customChromiumVersion}'");
+                }
                 else
                 {
                     Console.WriteLine("[!] Unrecognized argument '{0}'", argument);
@@ -52,31 +92,37 @@ namespace ChromeIPCSniffer
             // Prepare
             //
 
-            ChromeMonitor chromeMonitor = new ChromeMonitor();
-            string mojoVersion = MojoInterfacesFetcher.UpdateInterfacesInfoIfNeeded(chromeMonitor.ChromeVersion, force: forceFetchInterfacesInfo);
-            string legacyIpcversion = LegacyIpcInterfacesFetcher.UpdateInterfacesInfoIfNeeded(chromeMonitor.ChromeVersion, force: forceFetchInterfacesInfo);
-            if (mojoVersion != chromeMonitor.ChromeVersion || legacyIpcversion != chromeMonitor.ChromeVersion)
+            IMonitor monitor = null;
+            if (string.IsNullOrEmpty(customProcessName) && 
+                string.IsNullOrEmpty(customChromiumVersion) &&
+                string.IsNullOrEmpty(customIpcName))
+                monitor = new ChromeMonitor();
+            else
+                monitor = new CustomMonitor(customProcessName, customChromiumVersion, customIpcName);
+            var mojoVersion = MojoInterfacesFetcher.UpdateInterfacesInfoIfNeeded(monitor, force: forceFetchInterfacesInfo);
+            var legacyIpcVersion = LegacyIpcInterfacesFetcher.UpdateInterfacesInfoIfNeeded(monitor, force: forceFetchInterfacesInfo);
+            if (mojoVersion != monitor.ChromeVersion || legacyIpcVersion != monitor.ChromeVersion)
             {
                 Console.WriteLine("[!] Cached info is for " + mojoVersion + ", you may run --update-interfaces-info");
             }
 
-            MojoMethodHashesExtractor.ExtractMethodNames(chromeMonitor.DLLPath, force: forceExtractMethodNames);
+            //MojoMethodHashesExtractor.ExtractMethodNames(monitor.DLLPath, force: forceExtractMethodNames);
 
             bool success = UpdateWiresharkConfiguration();
             if (!success) return;
 
             Console.WriteLine("[+] Enumerating existing chrome pipes");
-            HandlesUtility.EnumerateExistingHandles(ChromeMonitor.GetRunningChromeProcesses());
+            HandlesUtility.EnumerateExistingHandles(monitor.GetRunningProcesses());
 
             //
             // Start sniffing
             //
 
-            string outputPipeName = "chromeipc";
+            string outputPipeName = monitor.OutputPipeName;
             string outputPipePath = @"\\.\pipe\" + outputPipeName;
             Console.WriteLine("[+] Starting sniffing of chrome named pipe to " + outputPipePath + ".");
 
-            NamedPipeSniffer pipeMonitor = new NamedPipeSniffer(chromeMonitor, outputPipeName, onlyMojo ? "mojo" : "", onlyNewPipes);
+            NamedPipeSniffer pipeMonitor = new NamedPipeSniffer(monitor, outputPipeName, onlyMojo ? "mojo" : "", onlyNewPipes);
             bool isMonitoring = pipeMonitor.Start();
 
             if (isMonitoring)
