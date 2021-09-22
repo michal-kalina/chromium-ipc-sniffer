@@ -165,6 +165,18 @@ Available options:
         --extract-method-names
             Forcefully re-scan chrome.dll file to find the message IDs and update the mojo_interfaces_map.lua file
             This should happen automaticlly whenever chrome.dll changes.
+
+    Custom monitor:
+        All below switches has to be provided otherwise default chrome sniffer will be used.
+        --custom-process-name
+            Using: --custom-process-name=""<Name of a process you want to monitor (without .exe part)>"".
+            Example: --custom-process-name=""chrome"" 
+        --custom-chromium-version
+            Using: --custom-chromium-version ""<chromium-version>""
+            Example: --custom-chromium-version ""87.0.4280.101""
+        --custom-ipc-name
+            Using: --custom-ipc-name ""<ipc-name>""
+            Example: --custom-ipc-name ""chromiumipc""
                             ");
 
         }
