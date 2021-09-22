@@ -173,7 +173,7 @@ Available options:
             Example: --custom-process-name=""chrome"" 
         --custom-chromium-version
             Using: --custom-chromium-version ""<chromium-version>""
-            Example: --custom-chromium-version ""87.0.4280.101""
+            Example: --custom-chromium-version ""87.0.4280.141""
         --custom-ipc-name
             Using: --custom-ipc-name ""<ipc-name>""
             Example: --custom-ipc-name ""chromiumipc""
