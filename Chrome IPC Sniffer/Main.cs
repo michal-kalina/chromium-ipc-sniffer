@@ -172,11 +172,11 @@ Available options:
             Using: --custom-process-name=""<Name of a process you want to monitor (without .exe part)>"".
             Example: --custom-process-name=""chrome"" 
         --custom-chromium-version
-            Using: --custom-chromium-version ""<chromium-version>""
-            Example: --custom-chromium-version ""87.0.4280.141""
+            Using: --custom-chromium-version=""<chromium-version>""
+            Example: --custom-chromium-version=""87.0.4280.141""
         --custom-ipc-name
-            Using: --custom-ipc-name ""<ipc-name>""
-            Example: --custom-ipc-name ""chromiumipc""
+            Using: --custom-ipc-name=""<ipc-name>""
+            Example: --custom-ipc-name=""chromiumipc""
                             ");
 
         }
